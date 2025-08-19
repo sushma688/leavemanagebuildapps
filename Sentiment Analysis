@@ -1,0 +1,81 @@
+1. First created a view  with input field, Speak button, submit button
+<VBox class="sapUiSmallMargin">
+  <Input id="feedbackInput" placeholder="Your feedback..." width="100%" />
+
+  <HBox justifyContent="SpaceBetween">
+    <Button text="🎤 Speak" type="Emphasized" press="onVoiceInput" />
+    <Button text="Submit" type="Accept" press="onSubmitFeedback" />
+  </HBox>
+</VBox>
+
+2. Using API converted voice to text
+
+onVoiceInput: function () {
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        this.byId("feedbackInput").setValue(transcript); // Set transcribed text
+    };
+    recognition.start();
+},
+
+3. installed sentiment package - npm install sentiment
+
+4. now did odata v4 post call to caom service
+
+onSubmitFeedback: function () {
+    const feedback = this.byId("feedbackInput").getValue();
+    const oModel = this.getView().getModel(); // OData V4 model
+
+    // Bind to the Feedback entity set without sorters or filters
+    const oListBinding = oModel.bindList("/Feedback");
+
+    // Create a new feedback entry
+    const oContext = oListBinding.create({
+        message: feedback
+    });
+
+    // Wait for creation to complete
+    oContext.created().then(() => {
+        oContext.requestObject().then((oObject) => {
+			 this.byId("feedbackInput").setValue(""); 
+            sap.m.MessageToast.show(oObject.response);
+        });
+    }).catch((err) => {
+        sap.m.MessageToast.show("Error submitting feedback.");
+        console.error("OData V4 POST error:", err);
+    });
+}
+
+
+5. Import libraries in srv folder js file 
+
+const Sentiment = require('sentiment');
+const sentiment = new Sentiment();
+
+6. did sentiment analysis
+
+ srv.before('CREATE', 'Feedback', async (req) => {
+    const { message } = req.data;
+
+    const result = sentiment.analyze(message);
+    const score = result.score;
+
+    let sentimentType = 'neutral';
+    let uiMessage = 'Thank you for your feedback.';
+
+    if (score > 0) {
+      sentimentType = 'positive';
+      uiMessage = 'We’re glad you had a positive experience!';
+    } else if (score < 0) {
+      sentimentType = 'negative';
+      uiMessage = 'We’re sorry to hear that. We’ll work on improving.';
+    }
+
+    req.data.sentiment = sentimentType;
+    req.data.response = uiMessage;
+    req.data.createdAt = new Date().toISOString();
+  });
+
+Finally displayed in fiori app
